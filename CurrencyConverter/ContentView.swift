@@ -11,14 +11,14 @@ struct ContentView: View {
     @State private var currencies: [Currency] = []
     @State private var fromIndex = 0
     @State private var toIndex = 1
-    
+
     @State private var exchangeRate: Double?
     @State private var date = ""
-    
-    // Cache last fetched currency codes to show correct conversion rate
+
+    // Cache last fetched currency codes to show correct display
     @State private var lastFromCode: String = ""
     @State private var lastToCode: String = ""
-    
+
     var body: some View {
         NavigationView {
             // Sidebar
@@ -86,17 +86,56 @@ struct ContentView: View {
             currencies = loadCurrencies()
         }
     }
-    
-    func fetchExchangeRate() {
-        
-    }
-    
-    func loadCurrencies() -> [Currency]{
-        return []
-    }
-    
-}
 
-#Preview {
-    ContentView()
+    func fetchExchangeRate() {
+        let from = currencies[fromIndex].code
+        let to = currencies[toIndex].code
+
+        let urlString = "https://cdn.jsdelivr.net/npm/@fawazahmed0/currency-api@latest/v1/currencies/\(from).json"
+
+        guard let url = URL(string: urlString) else {
+            DispatchQueue.main.async {
+                self.exchangeRate = nil
+                self.date = ""
+                self.lastFromCode = ""
+                self.lastToCode = ""
+            }
+            return
+        }
+
+        URLSession.shared.dataTask(with: url) { data, _, error in
+            DispatchQueue.main.async {
+                self.exchangeRate = nil
+                self.date = ""
+            }
+
+            guard let data = data else { return }
+
+            do {
+                if let json = try JSONSerialization.jsonObject(with: data) as? [String: Any],
+                   let date = json["date"] as? String,
+                   let inner = json[from] as? [String: Any],
+                   let rate = inner[to] as? Double {
+                    DispatchQueue.main.async {
+                        self.exchangeRate = rate
+                        self.date = date
+                        self.lastFromCode = from
+                        self.lastToCode = to
+                    }
+                }
+            } catch {
+                print("JSON decoding error: \(error)")
+            }
+        }.resume()
+    }
+
+    func loadCurrencies() -> [Currency] {
+        guard let url = Bundle.main.url(forResource: "currencies", withExtension: "json"),
+              let data = try? Data(contentsOf: url),
+              let decoded = try? JSONDecoder().decode([Currency].self, from: data) else {
+            print("Failed to load currencies.json")
+            return []
+        }
+        return decoded
+    }
 }
